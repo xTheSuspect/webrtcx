@@ -59,13 +59,23 @@ const setStatus = t => statusEl.textContent = t;
 const pc = new RTCPeerConnection({
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
+
+    /* TURN over TCP */
     {
-      urls: "turn:openrelay.metered.ca:80",
+      urls: "turn:openrelay.metered.ca:443",
+      username: "openrelayproject",
+      credential: "openrelayproject"
+    },
+
+    /* TURN over TLS (MOST IMPORTANT) */
+    {
+      urls: "turns:openrelay.metered.ca:443",
       username: "openrelayproject",
       credential: "openrelayproject"
     }
   ]
 });
+
 
 let channel;
 let receiveBuffer = [];
@@ -206,6 +216,7 @@ async function sendFile() {
 
 </body>
 </html>
+
 
 
 
