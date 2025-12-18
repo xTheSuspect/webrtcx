@@ -99,7 +99,7 @@ ws.onopen = async () => {
     await pc.setLocalDescription(offer);
     ws.send(JSON.stringify({ offer }));
 
-    const url = location.href.split("#")[0] +"#"+ROOM;
+    const url = location.origin + location.pathname + "#" + ROOM;
     QRCode.toCanvas(document.getElementById("qr"), url);
     setStatus("Scan QR from phone");
   }
@@ -204,6 +204,7 @@ async function sendFile() {
 </body>
 
 </html>
+
 
 
 
