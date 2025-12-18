@@ -55,7 +55,12 @@ progress {
 const SIGNALING_URL = "wss://webrtcx-s-production.up.railway.app"; // ← PUT YOUR URL HERE
 
 /* ===== GLOBALS ===== */
-const pc = new RTCPeerConnection();
+const pc = new RTCPeerConnection({
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" }
+  ]
+});
+
 let channel;
 let receiveBuffer = [];
 let incomingFile = null;
@@ -183,5 +188,6 @@ async function sendFile() {
 </body>
 
 </html>
+
 
 
