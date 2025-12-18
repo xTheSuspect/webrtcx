@@ -75,6 +75,17 @@ const setStatus = t => statusEl.textContent = t;
 
 /* ===== SIGNALING ===== */
 const ws = new WebSocket(SIGNALING_URL);
+  ws.onopen = () => {
+  setStatus("🟢 Signaling connected");
+};
+
+ws.onerror = () => {
+  setStatus("❌ Signaling failed");
+};
+
+ws.onclose = () => {
+  setStatus("⚠️ Signaling closed");
+};
 
 ws.onopen = async () => {
   ws.send(JSON.stringify({ type: "join", room: ROOM }));
@@ -193,6 +204,7 @@ async function sendFile() {
 </body>
 
 </html>
+
 
 
 
