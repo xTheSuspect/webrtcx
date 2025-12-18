@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>P2P File Transfer X</title>
+<title>P2P File Transfer</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
@@ -57,12 +57,20 @@ const setStatus = t => statusEl.textContent = t;
 
 /* ===== PEER CONNECTION ===== */
 const pc = new RTCPeerConnection({
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    {
+      urls: "turn:openrelay.metered.ca:80",
+      username: "openrelayproject",
+      credential: "openrelayproject"
+    }
+  ]
 });
 
 let channel;
 let receiveBuffer = [];
 let incomingFile = null;
+let iceQueue = [];
 
 /* ===== SIGNALING ===== */
 const ws = new WebSocket(SIGNALING_URL);
@@ -71,7 +79,6 @@ ws.onopen = () => {
   setStatus("🟢 Signaling connected");
   ws.send(JSON.stringify({ type: "join", room: ROOM }));
 
-  // HOST: show QR immediately
   if (!location.hash) {
     const url = location.origin + location.pathname + "#" + ROOM;
     QRCode.toCanvas(document.getElementById("qr"), url);
@@ -85,7 +92,7 @@ ws.onclose = () => setStatus("⚠️ Signaling closed");
 ws.onmessage = async e => {
   const msg = JSON.parse(e.data);
 
-  /* HOST: create offer AFTER phone joins */
+  /* HOST: create offer after peer joins */
   if (msg.type === "peer-joined" && !location.hash) {
     channel = pc.createDataChannel("file");
     setupChannel();
@@ -99,6 +106,9 @@ ws.onmessage = async e => {
   if (msg.offer && location.hash) {
     await pc.setRemoteDescription(msg.offer);
 
+    iceQueue.forEach(c => pc.addIceCandidate(c));
+    iceQueue = [];
+
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     ws.send(JSON.stringify({ answer: pc.localDescription }));
@@ -107,12 +117,17 @@ ws.onmessage = async e => {
   /* HOST: receive answer */
   if (msg.answer && !location.hash) {
     await pc.setRemoteDescription(msg.answer);
+
+    iceQueue.forEach(c => pc.addIceCandidate(c));
+    iceQueue = [];
   }
 
-  /* ICE */
+  /* ICE handling */
   if (msg.ice) {
     if (pc.remoteDescription) {
       await pc.addIceCandidate(msg.ice);
+    } else {
+      iceQueue.push(msg.ice);
     }
   }
 };
@@ -191,7 +206,6 @@ async function sendFile() {
 
 </body>
 </html>
-
 
 
 
