@@ -60,7 +60,7 @@ const pc = new RTCPeerConnection({
     { urls: "stun:stun.l.google.com:19302" }
   ]
 });
-
+let peerJoined = false;
 let channel;
 let receiveBuffer = [];
 let incomingFile = null;
@@ -97,6 +97,10 @@ ws.onopen = async () => {
 ws.onmessage = async e => {
   const msg = JSON.parse(e.data);
 
+  if (msg.type === "peer-joined") {
+    peerJoined = true;
+  }
+
   if (msg.offer && !pc.currentRemoteDescription) {
     await pc.setRemoteDescription(msg.offer);
     const answer = await pc.createAnswer();
@@ -112,6 +116,7 @@ ws.onmessage = async e => {
     await pc.addIceCandidate(msg.ice);
   }
 };
+
 
 pc.onicecandidate = e => {
   if (e.candidate) {
@@ -188,6 +193,7 @@ async function sendFile() {
 </body>
 
 </html>
+
 
 
 
