@@ -44,55 +44,48 @@ progress { width: 100%; height: 18px; }
 <progress id="prog" value="0" max="100"></progress>
 
 <script>
-/* ===== CONFIG ===== */
+/* ================= CONFIG ================= */
 const SIGNALING_URL = "wss://webrtcx-s-production.up.railway.app";
 
-/* ===== ROOM ===== */
+/* ================= ROOM ================= */
 const ROOM = location.hash.substring(1) ||
              Math.random().toString(36).slice(2);
 
-/* ===== STATUS ===== */
+/* ================= STATUS ================= */
 const statusEl = document.getElementById("status");
 const setStatus = t => statusEl.textContent = t;
 
-/* ===== PEER CONNECTION ===== */
+/* ================= PEER ================= */
 const pc = new RTCPeerConnection({
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-
-    /* TURN over TCP */
-    {
-      urls: "turn:openrelay.metered.ca:443",
-      username: "openrelayproject",
-      credential: "openrelayproject"
-    },
-
-    /* TURN over TLS (MOST IMPORTANT) */
-    {
-      urls: "turns:openrelay.metered.ca:443",
-      username: "openrelayproject",
-      credential: "openrelayproject"
-    }
-  ]
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
 });
-
 
 let channel;
 let receiveBuffer = [];
 let incomingFile = null;
-let iceQueue = [];
 
-/* ===== SIGNALING ===== */
+/* ========== NON-TRICKLE ICE HELPER ========== */
+function waitForIceComplete() {
+  return new Promise(resolve => {
+    if (pc.iceGatheringState === "complete") return resolve();
+    pc.onicegatheringstatechange = () => {
+      if (pc.iceGatheringState === "complete") resolve();
+    };
+  });
+}
+
+/* ================= SIGNALING ================= */
 const ws = new WebSocket(SIGNALING_URL);
 
 ws.onopen = () => {
-  setStatus("🟢 Signaling connected");
   ws.send(JSON.stringify({ type: "join", room: ROOM }));
 
   if (!location.hash) {
     const url = location.origin + location.pathname + "#" + ROOM;
     QRCode.toCanvas(document.getElementById("qr"), url);
     setStatus("Scan QR from phone");
+  } else {
+    setStatus("Waiting for offer…");
   }
 };
 
@@ -102,13 +95,15 @@ ws.onclose = () => setStatus("⚠️ Signaling closed");
 ws.onmessage = async e => {
   const msg = JSON.parse(e.data);
 
-  /* HOST: create offer after peer joins */
+  /* HOST: create offer AFTER phone joins */
   if (msg.type === "peer-joined" && !location.hash) {
     channel = pc.createDataChannel("file");
     setupChannel();
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
+    await waitForIceComplete();
+
     ws.send(JSON.stringify({ offer: pc.localDescription }));
   }
 
@@ -116,35 +111,16 @@ ws.onmessage = async e => {
   if (msg.offer && location.hash) {
     await pc.setRemoteDescription(msg.offer);
 
-    iceQueue.forEach(c => pc.addIceCandidate(c));
-    iceQueue = [];
-
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
+    await waitForIceComplete();
+
     ws.send(JSON.stringify({ answer: pc.localDescription }));
   }
 
   /* HOST: receive answer */
   if (msg.answer && !location.hash) {
     await pc.setRemoteDescription(msg.answer);
-
-    iceQueue.forEach(c => pc.addIceCandidate(c));
-    iceQueue = [];
-  }
-
-  /* ICE handling */
-  if (msg.ice) {
-    if (pc.remoteDescription) {
-      await pc.addIceCandidate(msg.ice);
-    } else {
-      iceQueue.push(msg.ice);
-    }
-  }
-};
-
-pc.onicecandidate = e => {
-  if (e.candidate) {
-    ws.send(JSON.stringify({ ice: e.candidate }));
   }
 };
 
@@ -153,7 +129,7 @@ pc.ondatachannel = e => {
   setupChannel();
 };
 
-/* ===== DATA CHANNEL ===== */
+/* ================= DATA CHANNEL ================= */
 function setupChannel() {
   channel.binaryType = "arraybuffer";
 
@@ -174,7 +150,6 @@ function setupChannel() {
         a.href = URL.createObjectURL(blob);
         a.download = incomingFile.name;
         a.click();
-        incomingFile = null;
         receiveBuffer = [];
       }
     } else {
@@ -183,7 +158,7 @@ function setupChannel() {
   };
 }
 
-/* ===== SEND FILE ===== */
+/* ================= SEND FILE ================= */
 async function sendFile() {
   if (!channel || channel.readyState !== "open") {
     alert("Not connected yet");
@@ -200,13 +175,13 @@ async function sendFile() {
     mime: file.type
   }));
 
-  const chunk = 16384;
+  const chunkSize = 16384;
   let offset = 0;
 
   while (offset < file.size) {
-    const slice = file.slice(offset, offset + chunk);
+    const slice = file.slice(offset, offset + chunkSize);
     channel.send(await slice.arrayBuffer());
-    offset += chunk;
+    offset += chunkSize;
     prog.value = (offset / file.size) * 100;
   }
 
